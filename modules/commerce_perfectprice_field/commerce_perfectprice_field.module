@@ -5,18 +5,21 @@
  */
 function commerce_perfectprice_field_field_info() {
 	$info = array();
+
+	$thresholds = array();
+	$thresholds[0] = array(
+		'units' => 0, 
+		'discount' => 0,
+	);
 	
 	$info['commerce_perfectprice_field'] = array(
 		'label' => t('PeRfect Price'),
 		'description' => t('This field store PeRfect Price configuration in the database.'),
 		'settings' => array(
-			'initial_price' => -1,
-			// the last thresholds. the first has 0 units and the price of the product.
-			'threshold_number' => 1,	
+			'threshold_number' => 0,	
 		),
 		'instance_settings' => array(
-			'threshold_0_units' => 1,
-			'threshold_0_price' => -1,
+			'thresholds' => $thresholds,
 		),
 		'default_widget' => 'commerce_perfectprice_field_widget', 
 		'default_formatter' => 'commerce_perfectprice_field_formatter', 
@@ -28,7 +31,7 @@ function commerce_perfectprice_field_field_info() {
 /**
  * Implementation of hook_field_is_empty().
  * 
- * TODO: Define when a PeRfect Price field is considered empty.
+ * @todo: Define when a PeRfect Price field is considered empty.
  */
 function commerce_perfectprice_field_field_is_empty($item, $field) {
 	if ($field['type'] == 'commerce_perfectprice_field') {
@@ -38,4 +41,104 @@ function commerce_perfectprice_field_field_is_empty($item, $field) {
 	}
 }
 
+/**
+ * Implementations of hook_field_settings_form().
+ */
+function commerce_perfectprice_field_field_settings_form($field, $instance, $has_data) {
+	$form = array();
 
+	$form['threshold_number'] = array(
+		'#type' => 'textfield', 
+		'#title' => t('Number of threshold'),
+		'#default_value' => $field['settings']['threshold_number'], 
+		'#element_validate' => array('element_validate_integer_positive'),
+		'#description' => t('Define how many threshold this product should have.'),
+	);
+
+	return $form;
+}
+
+/**
+ * Implementations of hook_field_validate().
+ */
+function commerce_perfectprice_field_field_validate($entity_type, $entity, $field, $instance, $langcode, $items, &$errors) {
+	if ($field['type'] == 'commerce_perfectprice_field') {
+		$threshold_number = $field['settings']['threshold_number'];
+		foreach ($items as $delta => $item) {
+			foreach ($item['thresholds'] as $threshold_id => $threshold) {
+				if ($threshold_id > 0) {
+					$previous = $item['thresholds'][$threshold_id - 1];
+					if ($threshold['units'] >= $previous['units']) {
+						$errors[$field['field_name']][$langcode][$delta][] = array(
+							'error' => 'commerce_perfectprice_field_error_units', 
+							'message' => t('%name [threshold #%number]: the units value may not be greater than previous one (%previous).', array('%name' => $instance['label'], '%number' => $threshold_id, '%previous' => $previous['units'])),
+						);
+					}
+					if ($threshold['discount'] >= $$previous['discount']) {
+						$errors[$field['field_name']][$langcode][$delta][] = array(
+							'error' => 'commerce_perfectprice_field_error_discount', 
+							'message' => t('%name [threshold #%number]: the discount value may not be greater than previous one (%previous).', array('%name' => $instance['label'], '%number' => $threshold_id, '%previous' => $previous['discount'])),
+						);
+					}
+				}
+			}
+		}
+	}
+}
+
+/**
+ * Implementations of hook_field_widget_info().
+ */
+function commerce_perfectprice_field_field_widget_info() {
+	$widget = array();
+
+	$widget['commerce_perfectprice_field'] = array(
+		'label' => t('PeRfect Price'),
+		'field types' => array('commerce_perfectprice_field'),
+		'settings' => array(),
+		'behaviors' => array(
+			'multiple values' => FIELD_BEHAVIOR_DEFAULT, 
+			'default value' => FIELD_BEHAVIOR_DEFAULT,
+		),
+	);
+
+	return $widget;
+}
+
+/**
+ * Implementation of hook_field_widget_form().
+ */
+function commerce_perfectprice_field_field_widget_form(&$form, &$form_state, $field, $instance, $langcode, $items, $delta, $element) {
+	dpm($field);
+	dpm($instance);
+	dpm($items);
+	dpm($element);
+
+	$base = $element;
+
+	foreach (range(1, $field['settings']['threshold_number']) as $threshold_id) {
+		$fieldset = "threshold_{$threshold_id}_fieldset";
+		$prefix = "threshold_{$threshold_id}";
+		$element[$fieldset] = array(
+			'#type' => 'fieldset', 
+			'#title' => t('Threshold #%number', array('%number' => $threshold_id)), 
+			'#collapsible' => FALSE, 
+			'#collapsed' => FALSE,
+		);
+
+		$element[$fieldset]["{$prefix}_units"] = array(
+			'#type' => 'textfield',
+			'#title' => t('Units'), 
+			'#default_value' => '',
+		);
+
+		$element[$fieldset]["{$prefix}_discount"] = array(
+			'#type' => 'textfield',
+			'#title' => t('Discount'), 
+			'#default_value' => '',
+		);
+
+	}
+
+	return $element;
+}

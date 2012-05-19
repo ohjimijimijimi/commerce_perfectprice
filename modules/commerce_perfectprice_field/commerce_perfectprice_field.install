@@ -23,19 +23,18 @@ function commerce_perfectprice_field_field_schema($field) {
 			'description' => 'The units amount.',
 		);
 
-		$columns['threshold'] => array(
+		$columns['threshold'] = array(
 			'type' => 'blob', 
 			'size' => 'big', 
 			'not null' => TRUE,
 			'serialize' => TRUE,
-			'description' => 'The actual trheshold.'
+			'description' => 'The actual trheshold.',
 		);
 		
 		$schema = array(
 			'columns' => $columns, 
 			'indexes' => array(
 				'units' => array('units'),
-				'threshold' => array('threshold'),
 			),
 		);
 
