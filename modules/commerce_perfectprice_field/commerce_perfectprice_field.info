@@ -1,0 +1,6 @@
+name = PeRfect Price Field
+description = A field for the PeRfect Price Commerce module.
+core = 7.x
+package = Commerce (contrib)
+
+files[] = commerce_perfectprice_field.module

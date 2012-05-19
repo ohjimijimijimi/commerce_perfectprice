@@ -1,0 +1,41 @@
+<?php
+
+/**
+ * Implementation of hook_field_info().
+ */
+function commerce_perfectprice_field_field_info() {
+	$info = array();
+	
+	$info['commerce_perfectprice_field'] = array(
+		'label' => t('PeRfect Price'),
+		'description' => t('This field store PeRfect Price configuration in the database.'),
+		'settings' => array(
+			'initial_price' => -1,
+			// the last thresholds. the first has 0 units and the price of the product.
+			'threshold_number' => 1,	
+		),
+		'instance_settings' => array(
+			'threshold_0_units' => 1,
+			'threshold_0_price' => -1,
+		),
+		'default_widget' => 'commerce_perfectprice_field_widget', 
+		'default_formatter' => 'commerce_perfectprice_field_formatter', 
+	);
+
+	return $info;
+}
+
+/**
+ * Implementation of hook_field_is_empty().
+ * 
+ * TODO: Define when a PeRfect Price field is considered empty.
+ */
+function commerce_perfectprice_field_field_is_empty($item, $field) {
+	if ($field['type'] == 'commerce_perfectprice_field') {
+		watchdog('commerce_perfectprice_field', 'TODO: Define when a PeRfect Price field is considered empty.');
+		dpm($item);
+		return FALSE;
+	}
+}
+
+

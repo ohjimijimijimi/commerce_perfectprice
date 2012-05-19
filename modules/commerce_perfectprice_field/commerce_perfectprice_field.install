@@ -1,0 +1,44 @@
+<?php
+
+/**
+ * Implementation of hook_field_schema().
+ *
+ * The value for a PeRfect Price field is the combination of the number of 
+ * units reached by the product and the threshold achieved. 
+ * 
+ * @param $field
+ *	 The field structure.
+ * @return 
+ *	 The schema array.
+ */
+function commerce_perfectprice_field_field_schema($field) {
+	if ($field['type'] == 'commerce_perfectprice_field') {
+		$columns = array();
+
+		$columns['units'] = array(
+			'type' => 'int', 
+			'unsigned' => TRUE,
+			'not null' => TRUE,
+			'default' => 0,
+			'description' => 'The units amount.',
+		);
+
+		$columns['threshold'] => array(
+			'type' => 'blob', 
+			'size' => 'big', 
+			'not null' => TRUE,
+			'serialize' => TRUE,
+			'description' => 'The actual trheshold.'
+		);
+		
+		$schema = array(
+			'columns' => $columns, 
+			'indexes' => array(
+				'units' => array('units'),
+				'threshold' => array('threshold'),
+			),
+		);
+
+		return $schema;
+	}
+}
