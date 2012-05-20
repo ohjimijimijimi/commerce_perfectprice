@@ -16,7 +16,7 @@ function commerce_perfectprice_field_field_info() {
 		'label' => t('PeRfect Price'),
 		'description' => t('This field store PeRfect Price configuration in the database.'),
 		'settings' => array(
-			'threshold_number' => 0,	
+			'max_threshold' => 10,	
 		),
 		'instance_settings' => array(
 			'thresholds' => $thresholds,
@@ -36,7 +36,7 @@ function commerce_perfectprice_field_field_info() {
 function commerce_perfectprice_field_field_is_empty($item, $field) {
 	if ($field['type'] == 'commerce_perfectprice_field') {
 		watchdog('commerce_perfectprice_field', 'TODO: Define when a PeRfect Price field is considered empty.');
-		dpm($item);
+		//dpm($item);
 		return FALSE;
 	}
 }
@@ -47,10 +47,10 @@ function commerce_perfectprice_field_field_is_empty($item, $field) {
 function commerce_perfectprice_field_field_settings_form($field, $instance, $has_data) {
 	$form = array();
 
-	$form['threshold_number'] = array(
+	$form['max_threshold'] = array(
 		'#type' => 'textfield', 
-		'#title' => t('Number of threshold'),
-		'#default_value' => $field['settings']['threshold_number'], 
+		'#title' => t('Max number of thresholds'),
+		'#default_value' => $field['settings']['max_threshold'], 
 		'#element_validate' => array('element_validate_integer_positive'),
 		'#description' => t('Define how many threshold this product should have.'),
 	);
@@ -63,7 +63,7 @@ function commerce_perfectprice_field_field_settings_form($field, $instance, $has
  */
 function commerce_perfectprice_field_field_validate($entity_type, $entity, $field, $instance, $langcode, $items, &$errors) {
 	if ($field['type'] == 'commerce_perfectprice_field') {
-		$threshold_number = $field['settings']['threshold_number'];
+		$max_threshold = $field['settings']['max_threshold'];
 		foreach ($items as $delta => $item) {
 			foreach ($item['thresholds'] as $threshold_id => $threshold) {
 				if ($threshold_id > 0) {
@@ -109,30 +109,52 @@ function commerce_perfectprice_field_field_widget_info() {
  * Implementation of hook_field_widget_form().
  */
 function commerce_perfectprice_field_field_widget_form(&$form, &$form_state, $field, $instance, $langcode, $items, $delta, $element) {
-	dpm($field);
-	dpm($instance);
-	dpm($items);
-	dpm($element);
-
 	$base = $element;
 
-	foreach (range(1, $field['settings']['threshold_number']) as $threshold_id) {
+	// Build the options array based on the field settings.
+	$range = range(0, $field['settings']['max_threshold']);
+	unset($range[0]);
+
+	$field_name = $field['field_name'];
+	$threshold_number = !empty($form_state['values'][$field_name])
+		? $form_state['values'][$field_name][$langcode][$delta]['threshold_number'] 
+		: 1;
+
+	$element = array(
+		'#type' => 'fieldset', 
+		'#prefix' => '<div id="thresholds-replace">',
+		'#suffix' => '</div>',
+	);
+
+	$element['threshold_number'] = array(
+		'#type' => 'select', 
+		'#title' => t('Threshold number'),
+		'#description' => t('Choose how many threshold do you want to configure.'),
+		'#options' => $range,
+		'#ajax' => array(
+			'callback' => 'commerce_perfectprice_field_field_widget_form_add_thresholds',
+			'wrapper' => 'thresholds-replace', 
+		),
+		'#default_option' => array(1 => 1),
+	);
+
+	foreach (range(1, $threshold_number) as $threshold_id) {
 		$fieldset = "threshold_{$threshold_id}_fieldset";
 		$prefix = "threshold_{$threshold_id}";
-		$element[$fieldset] = array(
+		$element['thresholds'][$fieldset] = array(
 			'#type' => 'fieldset', 
 			'#title' => t('Threshold #%number', array('%number' => $threshold_id)), 
 			'#collapsible' => FALSE, 
 			'#collapsed' => FALSE,
 		);
 
-		$element[$fieldset]["{$prefix}_units"] = array(
+		$element['thresholds'][$fieldset]["{$prefix}_units"] = array(
 			'#type' => 'textfield',
 			'#title' => t('Units'), 
 			'#default_value' => '',
 		);
 
-		$element[$fieldset]["{$prefix}_discount"] = array(
+		$element['thresholds'][$fieldset]["{$prefix}_discount"] = array(
 			'#type' => 'textfield',
 			'#title' => t('Discount'), 
 			'#default_value' => '',
@@ -140,5 +162,14 @@ function commerce_perfectprice_field_field_widget_form(&$form, &$form_state, $fi
 
 	}
 
+	$element += $base;
+
 	return $element;
+}
+
+/**
+ * AJAX callback function for widget form.
+ */
+function commerce_perfectprice_field_field_widget_form_add_thresholds($form, $form_state) {
+	return $form['field_perfect_price'];
 }

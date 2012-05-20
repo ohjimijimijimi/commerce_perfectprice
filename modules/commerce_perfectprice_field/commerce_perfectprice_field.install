@@ -28,7 +28,7 @@ function commerce_perfectprice_field_field_schema($field) {
 			'size' => 'big', 
 			'not null' => TRUE,
 			'serialize' => TRUE,
-			'description' => 'The actual trheshold.',
+			'description' => 'The actual threshold.',
 		);
 		
 		$schema = array(
