@@ -15,26 +15,34 @@ function commerce_perfectprice_field_field_schema($field) {
 	if ($field['type'] == 'commerce_perfectprice_field') {
 		$columns = array();
 
-		$columns['units'] = array(
+		//$columns['units'] = array(
+		//	'type' => 'int', 
+		//	'unsigned' => TRUE,
+		//	'not null' => TRUE,
+		//	'default' => 0,
+		//	'description' => 'The units amount.',
+		//);
+
+		$columns['threshold_number'] = array(
 			'type' => 'int', 
 			'unsigned' => TRUE,
 			'not null' => TRUE,
 			'default' => 0,
-			'description' => 'The units amount.',
+			'description' => 'The thresholds amount.',
 		);
 
-		$columns['threshold'] = array(
-			'type' => 'blob', 
+		$columns['thresholds'] = array(
+			'type' => 'text', 
 			'size' => 'big', 
 			'not null' => TRUE,
 			'serialize' => TRUE,
-			'description' => 'The actual threshold.',
+			'description' => 'The actual thresholds data.',
 		);
 		
 		$schema = array(
 			'columns' => $columns, 
 			'indexes' => array(
-				'units' => array('units'),
+				'threshold_number' => array('threshold_number'),
 			),
 		);
 

@@ -87,6 +87,87 @@ function commerce_perfectprice_field_field_validate($entity_type, $entity, $fiel
 }
 
 /**
+ * Implementation of hook_field_load().
+ */
+function commerce_perfectprice_field_field_load($entity_type, $entities, $field, $instances, $langcode, &$items, $age) {
+	foreach ($entities as $id => $entity) {
+		foreach ($items[$id] as $delta => $item) {
+			if (!empty($item['thresholds'])) {
+				$items[$id][$delta]['thresholds'] = unserialize($item['thresholds']);
+			} else {
+				$items[$id][$delta]['thresholds'] = array('threshold_1' => array('units' => '', 'discount' => ''));
+			}
+		}
+	}
+}
+
+/**
+ * Implementation of hook_field_presave().
+ */
+function commerce_perfectprice_field_field_presave($entity_type, $entity, $field, $instance, $langcode, &$items) {
+	foreach($items as $delta => $item) {
+		if (isset($item['thresholds'])) {
+			$items[$delta]['thresholds'] = serialize($item['thresholds']);
+		}
+	}
+}
+
+/**
+ * Implementation of hook_field_attach_insert().
+ */
+function commerce_perfectprice_field_field_attach_insert($entity_type, $entity) {
+	_commerce_perfectprice_field_attach_unserialized_thresholds($entity_type, $entity);
+}
+
+/**
+ * Implementation of hook_field_attach_update().
+ */
+function commerce_perfectprice_field_field_attach_update($entity_type, $entity) {
+	_commerce_perfectprice_field_attach_unserialized_thresholds($entity_type, $entity);
+}
+
+function _commerce_perfectprice_field_attach_unserialized_thresholds($entity_type, $entity) {
+	$options = array(
+		'default' => FALSE,
+		'deleted' => FALSE,
+		'language' => NULL,
+	);
+
+	// Determine the list of instances to iterate on.
+	list(, , $bundle) = entity_extract_ids($entity_type, $entity);
+	$instances = _field_invoke_get_instances($entity_type, $bundle, $options);
+
+	// Iterate through the instances and collect results.
+	$return = array();
+	foreach ($instances as $instance) {
+		$field_name = $instance['field_name'];
+		$field = field_info_field($field_name);
+
+		// If the instance is a price field with data...
+		if ($field['type'] == 'commerce_perfectprice_field' && isset($entity->{$field_name})) {
+			// Iterate over the items arrays for each language.
+			foreach (array_keys($entity->{$field_name}) as $langcode) {
+				$items = isset($entity->{$field_name}[$langcode]) ? $entity->{$field_name}[$langcode] : array();
+
+				// For each item in the array, unserialize or initialize its data array.
+				foreach ($items as $delta => $item) {
+					// If we have a non-array $item['data'], unserialize it.
+					if (!empty($item['thresholds']) && !is_array($item['thresholds'])) {
+						$entity->{$field_name}[$langcode][$delta]['thresholds'] = unserialize($item['thresholds']);
+					}
+					// If we have no data element (or an existing empty), create an empty
+					// array.
+					elseif (empty($item['thresholds'])) {
+						$entity->{$field_name}[$langcode][$delta]['thresholds'] = array('threshold_1' => array('units' => '', 'discount' => ''));
+					}
+				}
+			}
+		}
+	}
+}
+
+
+/**
  * Implementations of hook_field_widget_info().
  */
 function commerce_perfectprice_field_field_widget_info() {
@@ -115,10 +196,8 @@ function commerce_perfectprice_field_field_widget_form(&$form, &$form_state, $fi
 	$range = range(0, $field['settings']['max_threshold']);
 	unset($range[0]);
 
-	$field_name = $field['field_name'];
-	$threshold_number = !empty($form_state['values'][$field_name])
-		? $form_state['values'][$field_name][$langcode][$delta]['threshold_number'] 
-		: 1;
+	$threshold_number = _commerce_perfectprice_field_get_threshold_number_value($form_state, $field, $langcode, $items, $delta);
+	dpm($threshold_number);
 
 	$element = array(
 		'#type' => 'fieldset', 
@@ -135,31 +214,23 @@ function commerce_perfectprice_field_field_widget_form(&$form, &$form_state, $fi
 			'callback' => 'commerce_perfectprice_field_field_widget_form_add_thresholds',
 			'wrapper' => 'thresholds-replace', 
 		),
-		'#default_option' => array(1 => 1),
+		'#default_value' => $threshold_number,
 	);
 
-	foreach (range(1, $threshold_number) as $threshold_id) {
-		$fieldset = "threshold_{$threshold_id}_fieldset";
-		$prefix = "threshold_{$threshold_id}";
-		$element['thresholds'][$fieldset] = array(
-			'#type' => 'fieldset', 
-			'#title' => t('Threshold #%number', array('%number' => $threshold_id)), 
-			'#collapsible' => FALSE, 
-			'#collapsed' => FALSE,
-		);
+	$range_init = 1;
+	if (!empty($items[$delta]['thresholds'])) {
+		$range_init += count($items[$delta]['thresholds']);
+		foreach ($items[$delta]['thresholds'] as $threshold_id => $threshold) {
+			_commerce_perfectprice_field_build_threshold_form_array($element, $threshold_id, $threshold);
+		}
+	} 
 
-		$element['thresholds'][$fieldset]["{$prefix}_units"] = array(
-			'#type' => 'textfield',
-			'#title' => t('Units'), 
-			'#default_value' => '',
-		);
 
-		$element['thresholds'][$fieldset]["{$prefix}_discount"] = array(
-			'#type' => 'textfield',
-			'#title' => t('Discount'), 
-			'#default_value' => '',
-		);
-
+	if ($range_init <= $threshold_number) {
+		foreach (range($range_init, $threshold_number) as $threshold_id) {
+			// pass through the last $threshold as a starting point.
+			_commerce_perfectprice_field_build_threshold_form_array($element, $threshold_id, $threshold);
+		}
 	}
 
 	$element += $base;
@@ -167,9 +238,119 @@ function commerce_perfectprice_field_field_widget_form(&$form, &$form_state, $fi
 	return $element;
 }
 
+function _commerce_perfectprice_field_get_threshold_number_value($form_state, $field, $langcode, $items, $delta) {
+	$field_name = $field['field_name'];
+	$threshold_number = !empty($form_state['values'][$field_name])
+		? $form_state['values'][$field_name][$langcode][$delta]['threshold_number'] 
+		: $items[$delta]['threshold_number'];
+
+	dpm($form_state);
+	// TODO: doesn't work. understand why
+	if (isset($form_state['triggering_element']) && $form_state['triggering_element']['#name'] == 'op_delete') {
+		$threshold_number--;
+	}
+	dpm($threshold_number);
+
+	return $threshold_number;
+}
+
+function _commerce_perfectprice_field_build_threshold_form_array(&$element, $threshold_id, $threshold = array()) {
+	$fieldset = $threshold_id;
+	if (strpos($threshold_id, 'threshold_') === FALSE) {
+		$fieldset = "threshold_{$threshold_id}";
+	} else {
+		preg_match('/threshold_([0-9]+)/', $threshold_id, $matches);
+		$threshold_id = $matches[1]; 
+	}
+
+	$element['thresholds'][$fieldset] = array(
+		'#type' => 'fieldset', 
+		'#title' => t('Threshold #%number', array('%number' => $threshold_id)), 
+		'#collapsible' => FALSE, 
+		'#collapsed' => FALSE,
+		'#prefix' => '<div id="'.$fieldset.'">',
+		'#suffix' => '</div>',
+	);
+
+	$element['thresholds'][$fieldset]['units'] = array(
+		'#type' => 'textfield',
+		'#title' => t('Units'), 
+		'#default_value' => $threshold['units'],
+	);
+
+	$element['thresholds'][$fieldset]['discount'] = array(
+		'#type' => 'textfield',
+		'#title' => t('Discount'), 
+		'#default_value' => $threshold['discount'],
+	);
+
+	$element['thresholds'][$fieldset]['delete_threshold'] = array(
+		'#type' => 'button', 
+		'#value' => t('delete'),
+		'#name' => 'op_delete', 
+		'#ajax' => array(
+			'callback' => 'commerce_perfectprice_field_field_widget_form_delete_threshold', 
+			'wrapper' => $fieldset,
+		),
+	);
+}
+
 /**
  * AJAX callback function for widget form.
  */
 function commerce_perfectprice_field_field_widget_form_add_thresholds($form, $form_state) {
 	return $form['field_perfect_price'];
+}
+
+/**
+ * AJAX callback to delete the specified threshold.
+ *
+ * Remove the fieldset.
+ */
+function commerce_perfectprice_field_field_widget_form_delete_threshold($form, $form_state) {
+	return '';
+}
+
+/**
+ * Implementation of hook_field_formatter().
+ */
+function commerce_perfectprice_field_field_formatter_info() {
+	$formatter = array();
+
+	$formatter['commerce_perfectprice_field_default'] = array(
+		'label' => t('PeRfect Price'),
+		'field types' => array('commerce_perfectprice_field'),
+	);
+
+	return $formatter;
+}
+
+/**
+ * Implementation of hook_field_formatter_settings_form().
+ */
+//function commerce_perfectprice_field_field_formatter_settings_form($field, $instance, $view_mode, $form, &$form_state) {
+//}
+
+/**
+ * Implementation of hook_field_formatter_summary().
+ */
+//function commerce_perfectprice_field_field_formatter_summary($field, $instance, $view_mode) {
+//}
+
+/**
+ * Implementation of hook_field_formatter_view().
+ */
+function commerce_perfectprice_field_field_formatter_view($obj_type, $object, $field, $instance, $langcode, $items, $display) {
+	$element = array();
+	$settings = $display['settings'];
+
+	dpm($obj_type);
+	dpm($object);
+	dpm($field);
+	dpm($instance);
+	dpm($items);
+	dpm($display);
+	dpm($settings);
+
+	return $element;
 }
